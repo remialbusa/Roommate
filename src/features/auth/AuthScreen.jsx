@@ -34,9 +34,13 @@ export default function AuthScreen() {
     if (busy) return;
     setError("");
     setBusy(true);
-    const result = mode === "login" ? actions.logIn({ email, password }) : actions.signUp({ name, email, password });
-    setBusy(false);
-    if (!result.ok) setError(result.error);
+    // Auth actions are async in online mode, sync locally — await covers both.
+    Promise.resolve(mode === "login" ? actions.logIn({ email, password }) : actions.signUp({ name, email, password })).then(
+      (result) => {
+        setBusy(false);
+        if (!result.ok) setError(result.error);
+      }
+    );
   }
 
   function switchMode(next) {

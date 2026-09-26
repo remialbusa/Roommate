@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useReducer } from "react";
+import { useEffect, useReducer } from "react";
+import AppStateContext, { useAppState } from "./appContext";
 
 /* ---------------------------------------------------------------
    Single source of truth: household accounts, bills, loans,
@@ -323,8 +324,6 @@ function reducer(state, action) {
   }
 }
 
-const AppStateContext = createContext(null);
-
 export function AppStateProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
 
@@ -388,11 +387,7 @@ export function AppStateProvider({ children }) {
 
   const currentUser = state.currentUserId ? state.users[state.currentUserId] : null;
 
-  return <AppStateContext.Provider value={{ state, actions, currentUser }}>{children}</AppStateContext.Provider>;
+  return <AppStateContext.Provider value={{ state, actions, currentUser, needsHousehold: false }}>{children}</AppStateContext.Provider>;
 }
 
-export function useAppState() {
-  const ctx = useContext(AppStateContext);
-  if (!ctx) throw new Error("useAppState must be used within AppStateProvider");
-  return ctx;
-}
+export { useAppState };

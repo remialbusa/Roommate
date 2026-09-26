@@ -22,6 +22,21 @@ export default function SettingsModal() {
   const settings = state.settings || { currency: "USD", logReminders: true };
   const isAdmin = currentUser?.isAdmin === true;
   const [confirmRemoveId, setConfirmRemoveId] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  function copyInviteCode() {
+    const code = state.household?.invite_code;
+    if (!code) return;
+    const done = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(code).then(done).catch(done);
+    } else {
+      done();
+    }
+  }
 
   function exportData() {
     const { ui, ...persisted } = state;
@@ -44,6 +59,25 @@ export default function SettingsModal() {
   return (
     <Modal open={state.ui.settingsOpen} onClose={actions.closeSettings} title="Settings">
       <div className="max-h-[70vh] overflow-y-auto app-scroll -mx-1 px-1">
+        {state.household && (
+          <div className="rounded-2xl p-4 mb-6 flex items-center gap-3" style={{ backgroundColor: COLORS.ink }}>
+            <div className="flex-1 min-w-0">
+              <div className="font-body text-[11.5px]" style={{ color: "rgba(241,236,220,0.55)" }}>
+                {state.household.name} · invite code
+              </div>
+              <div className="font-display font-bold text-[24px] tracking-[0.2em]" style={{ color: "#F1ECDC" }}>
+                {state.household.invite_code}
+              </div>
+            </div>
+            <button
+              onClick={copyInviteCode}
+              className="shrink-0 px-4 py-2.5 rounded-xl font-body font-semibold text-[13px] transition-transform active:scale-95"
+              style={{ backgroundColor: COLORS.lime, color: COLORS.ink }}
+            >
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+          </div>
+        )}
         <SectionTitle>Household</SectionTitle>
         <p className="font-body text-[13px] mb-3" style={{ color: "rgba(18,49,40,0.6)" }}>
           {users.length === 0

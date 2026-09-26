@@ -29,6 +29,32 @@ npm run preview    # serve the production build locally
 npm run smoke       # build + run an automated interaction test (see below)
 ```
 
+## Going online (one shared household across devices)
+
+Out of the box the app runs on local browser storage — each device
+has its own separate household. To share one household across
+phones, connect Supabase (free tier is plenty):
+
+1. Create a free project at supabase.com.
+2. Open the SQL Editor and run everything in `supabase/schema.sql`
+   (tables, access rules, realtime).
+3. Go to Authentication → Sign In / Sign Ups and turn OFF
+   "Confirm email" so sign-up logs users straight in.
+4. Copy the project URL and anon public key (Settings → API).
+5. Locally: copy `.env.example` to `.env.local` and fill in
+   `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY`, then restart
+   `npm run dev`.
+6. On Vercel: add the same two variables under Project Settings →
+   Environment Variables, then redeploy.
+
+With those set, the app switches to online mode automatically:
+sign up, create a household (you become admin), and share the
+invite code from Settings so roommates can join. Everyone sees the
+same bills, loans, notes, events, and activity live. Without the
+variables it keeps running locally exactly as before. Either way,
+accounts start fresh — old per-browser data doesn't transfer
+(use Settings → Export if you want a copy).
+
 ## Automated smoke test
 
 `scripts/smoke-test.mjs` mounts the actual built app in a simulated
