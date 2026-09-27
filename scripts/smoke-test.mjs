@@ -369,6 +369,8 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   await tick(150);
   snapshot("after Alex logs loan with Sam (pending)");
   assertContains("pending shown on home", window.document.getElementById("root").innerHTML, "awaiting confirmation");
+  assertContains("member breakdown renders", window.document.getElementById("root").innerHTML, "Settled up");
+  assertContains("pending mini-row renders", window.document.getElementById("root").innerHTML, "Awaiting confirmation");
   const balancesTile = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Owed vs owing"));
   if (balancesTile) balancesTile.click();
   else errors.push("Balances tile not found (Alex)");
@@ -459,6 +461,7 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   if (loanRow) loanRow.click();
   else errors.push("Test loan row not found (Alex)");
   await tick(100);
+  assertContains("loan shows its owner", window.document.getElementById("root").innerHTML, "Logged by Alex Test");
   const repayTile = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Log Repayment"));
   if (repayTile) repayTile.click();
   else errors.push("Log Repayment tile not found (Alex)");

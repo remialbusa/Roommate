@@ -90,6 +90,11 @@ export default function LoanDetail({ loanId, onBack }) {
           >
             {loan.direction === "owedToYou" ? "They owe you" : "You owe them"}
           </span>
+          {loan.createdBy && users[loan.createdBy] && (
+            <p className="font-body text-[12px] mt-1.5" style={{ color: "rgba(18,49,40,0.55)" }}>
+              Logged by {users[loan.createdBy].name}
+            </p>
+          )}
         </div>
 
         {status !== "confirmed" && (

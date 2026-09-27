@@ -24,6 +24,7 @@ export default function LendingFeature({ screen, activeLoan, onNavigate }) {
         setBalanceFilter(memberId || "All");
         onNavigate("balances");
       }}
+      onOpenLoan={(id) => onNavigate("loan", id)}
     />
   );
 }
