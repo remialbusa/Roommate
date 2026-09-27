@@ -6,6 +6,7 @@ import { COLORS } from "../../theme";
 import { useAppState } from "../../state/AppStateContext";
 import { DeleteButton } from "../../components/actions";
 import AddEventModal from "./AddEventModal";
+import AttachmentsSection from "../../components/Attachments";
 
 const COLOR_MAP = { gold: COLORS.gold, lime: COLORS.lime, ember: COLORS.ember };
 
@@ -74,6 +75,8 @@ export default function EventDetail({ eventId, onBack }) {
           ))}
         </div>
       </div>
+
+      <AttachmentsSection kind="event" ownerId={event.id} title="Attachments" dark />
 
       <div className="grid grid-cols-2 gap-3 relative">
         <button

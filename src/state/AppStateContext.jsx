@@ -40,6 +40,7 @@ const emptyState = {
   notes: [],
   events: [],
   activityLog: [],
+  attachments: [],
   settings: { ...DEFAULT_SETTINGS },
   ui: { settingsOpen: false },
 };
@@ -83,6 +84,7 @@ function sanitizeState(saved) {
     notes: Array.isArray(saved.notes) ? saved.notes.filter((n) => n && n.id) : [],
     events: Array.isArray(saved.events) ? saved.events.filter((e) => e && e.id) : [],
     activityLog: Array.isArray(saved.activityLog) ? saved.activityLog.slice(0, MAX_ACTIVITY) : [],
+    attachments: [],
     settings: sanitizeSettings(saved.settings),
     ui: { settingsOpen: false },
   };
@@ -119,7 +121,7 @@ function reducer(state, action) {
     case "LOG_OUT":
       return { ...state, currentUserId: null };
     case "ADD_BILL": {
-      const { name, category, amount, due, participants, actorId } = action.payload;
+      const { name, category, amount, due, dueDate, recurrence, participants, actorId } = action.payload;
       const cleanParticipants = [...new Set(participants)].filter((id) => state.users[id]);
       if (!name.trim() || !(Number(amount) > 0) || cleanParticipants.length === 0) return state;
       const bill = {
@@ -127,7 +129,9 @@ function reducer(state, action) {
         name: name.trim(),
         category,
         amount: Math.round(Number(amount) * 100) / 100,
-        due: due.trim() || "This month",
+        due: (due || "").trim() || "This month",
+        dueDate: /^\d{4}-\d{2}-\d{2}$/.test(dueDate || "") ? dueDate : null,
+        recurrence: ["Weekly", "Monthly"].includes(recurrence) ? recurrence : "None",
         splits: Object.fromEntries(cleanParticipants.map((id) => [id, false])),
       };
       return {
@@ -173,9 +177,9 @@ function reducer(state, action) {
       const { roommate, title, amount, direction, actorId } = action.payload;
       if (!state.users[roommate] || !title.trim() || !(Number(amount) > 0)) return state;
       const rounded = Math.round(Number(amount) * 100) / 100;
-      const loan = { id: makeId("loan"), roommate, title: title.trim(), amount: rounded, direction, date: "Today", repayments: [] };
+      const loan = { id: makeId("loan"), roommate, title: title.trim(), amount: rounded, direction, date: "Today", repayments: [], status: "pending", createdBy: actorId };
       const otherName = state.users[roommate]?.name ?? "roommate";
-      const msg = direction === "owedToYou" ? `lent $${rounded} to ${otherName} for “${loan.title}”` : `borrowed $${rounded} from ${otherName} for “${loan.title}”`;
+      const msg = direction === "owedToYou" ? `logged lending $${rounded} to ${otherName} for “${loan.title}” (awaiting confirmation)` : `requested $${rounded} from ${otherName} for “${loan.title}”`;
       return { ...state, loans: [...state.loans, loan], activityLog: capLog([logEntry(actorId, "lending", msg), ...state.activityLog]) };
     }
     case "UPDATE_LOAN": {
@@ -193,16 +197,37 @@ function reducer(state, action) {
       const { id, actorId } = action.payload;
       const loan = state.loans.find((l) => l.id === id);
       if (!loan) return state;
+      // Pending requests can only be cancelled by their creator;
+      // confirmed loans are shared records any member may remove.
+      if ((loan.status || "confirmed") === "pending" && loan.createdBy && loan.createdBy !== actorId) return state;
       return {
         ...state,
         loans: state.loans.filter((l) => l.id !== id),
         activityLog: capLog([logEntry(actorId, "lending", `removed the loan “${loan.title}”`), ...state.activityLog]),
       };
     }
+    case "CONFIRM_LOAN": {
+      const { id, actorId } = action.payload;
+      const loan = state.loans.find((l) => l.id === id);
+      if (!loan || (loan.status || "confirmed") !== "pending") return state;
+      // Only the counterparty (not the creator) confirms.
+      if (loan.createdBy && actorId !== loan.roommate) return state;
+      const loans = state.loans.map((l) => (l.id === id ? { ...l, status: "confirmed" } : l));
+      return { ...state, loans, activityLog: capLog([logEntry(actorId, "lending", `confirmed the “${loan.title}” loan`), ...state.activityLog]) };
+    }
+    case "DECLINE_LOAN": {
+      const { id, actorId } = action.payload;
+      const loan = state.loans.find((l) => l.id === id);
+      if (!loan || (loan.status || "confirmed") !== "pending") return state;
+      if (loan.createdBy && actorId !== loan.roommate) return state;
+      const loans = state.loans.map((l) => (l.id === id ? { ...l, status: "declined" } : l));
+      return { ...state, loans, activityLog: capLog([logEntry(actorId, "lending", `declined the “${loan.title}” loan`), ...state.activityLog]) };
+    }
     case "ADD_REPAYMENT": {
       const { loanId, amount, actorId } = action.payload;
       const loan = state.loans.find((l) => l.id === loanId);
       if (!loan || !(Number(amount) > 0)) return state;
+      if ((loan.status || "confirmed") !== "confirmed") return state;
       const repaid = loan.repayments.reduce((s, r) => s + Number(r.amount || 0), 0);
       const remaining = Number(loan.amount) - repaid;
       const clamped = Math.min(Number(amount), Math.max(0, Math.round(remaining * 100) / 100));
@@ -368,6 +393,8 @@ export function AppStateProvider({ children }) {
     addLoan: (payload) => dispatch({ type: "ADD_LOAN", payload }),
     updateLoan: (payload) => dispatch({ type: "UPDATE_LOAN", payload }),
     deleteLoan: (id, actorId) => dispatch({ type: "DELETE_LOAN", payload: { id, actorId } }),
+    confirmLoan: (id, actorId) => dispatch({ type: "CONFIRM_LOAN", payload: { id, actorId } }),
+    declineLoan: (id, actorId) => dispatch({ type: "DECLINE_LOAN", payload: { id, actorId } }),
     addRepayment: (loanId, amount, actorId) => dispatch({ type: "ADD_REPAYMENT", payload: { loanId, amount, actorId } }),
     addNote: (payload) => dispatch({ type: "ADD_NOTE", payload }),
     updateNote: (payload) => dispatch({ type: "UPDATE_NOTE", payload }),
@@ -381,6 +408,9 @@ export function AppStateProvider({ children }) {
     clearActivity: () => dispatch({ type: "CLEAR_ACTIVITY" }),
     removeMember: (id, actorId) => dispatch({ type: "REMOVE_MEMBER", payload: { id, actorId } }),
     resetData: () => dispatch({ type: "RESET_DATA" }),
+    addAttachment: async () => ({ ok: false, error: "Attachments need online mode — connect Supabase in Settings." }),
+    deleteAttachment: () => {},
+    getAttachmentUrl: async () => null,
     openSettings: () => dispatch({ type: "OPEN_SETTINGS" }),
     closeSettings: () => dispatch({ type: "CLOSE_SETTINGS" }),
   };

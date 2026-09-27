@@ -7,6 +7,7 @@ import { COLORS } from "../../theme";
 import { useAppState } from "../../state/AppStateContext";
 import { DeleteButton } from "../../components/actions";
 import AddNoteModal from "./AddNoteModal";
+import AttachmentsSection from "../../components/Attachments";
 
 const COLOR_MAP = { gold: COLORS.gold, lime: COLORS.lime, ember: COLORS.ember };
 
@@ -79,6 +80,8 @@ export default function NoteDetail({ noteId, onBack }) {
           {note.body}
         </p>
       </div>
+
+      <AttachmentsSection kind="note" ownerId={note.id} title="Attachments" dark />
 
       <div className="grid grid-cols-2 gap-3 relative">
         <button

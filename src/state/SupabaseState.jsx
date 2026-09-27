@@ -26,6 +26,7 @@ export function SupabaseStateProvider({ children }) {
   const [loans, setLoans] = useState([]);
   const [notes, setNotes] = useState([]);
   const [events, setEvents] = useState([]);
+  const [attachments, setAttachments] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const reloadTimer = useRef(null);
@@ -36,7 +37,7 @@ export function SupabaseStateProvider({ children }) {
     const { userId, householdId } = idsRef.current;
     if (!supabase || !userId || !householdId) return;
     try {
-      const [membersRes, billsRes, splitsRes, loansRes, repayRes, notesRes, eventsRes, attendRes, activityRes] =
+      const [membersRes, billsRes, splitsRes, loansRes, repayRes, notesRes, eventsRes, attendRes, attachRes, activityRes] =
         await Promise.all([
           supabase.from("memberships").select("role,user_id,joined_at,profiles!inner(id,name,bg)").eq("household_id", householdId).order("joined_at"),
           supabase.from("bills").select("*").eq("household_id", householdId).order("created_at"),
@@ -46,6 +47,7 @@ export function SupabaseStateProvider({ children }) {
           supabase.from("notes").select("*").eq("household_id", householdId).order("created_at"),
           supabase.from("events").select("*").eq("household_id", householdId).order("day"),
           supabase.from("event_attendees").select("event_id,user_id"),
+          supabase.from("attachments").select("*").eq("household_id", householdId).order("created_at"),
           supabase.from("activity_log").select("*").eq("household_id", householdId).order("created_at", { ascending: false }).limit(MAX_ACTIVITY),
         ]);
       if (membersRes.data) setMembers(membersRes.data);
@@ -66,6 +68,8 @@ export function SupabaseStateProvider({ children }) {
             category: b.category,
             amount: Number(b.amount),
             due: b.due,
+            dueDate: b.due_date || null,
+            recurrence: b.recurrence || "None",
             splits: filtered[b.id] || {},
           }))
         );
@@ -97,6 +101,8 @@ export function SupabaseStateProvider({ children }) {
               amount: Number(l.amount),
               date: l.date,
               direction,
+              status: l.status || "confirmed",
+              createdBy: l.created_by,
               repayments: filtered[l.id] || [],
             };
           })
@@ -129,6 +135,17 @@ export function SupabaseStateProvider({ children }) {
             time: e.time,
             color: e.color,
             people: byEvent[e.id] || [],
+          }))
+        );
+      }
+      if (attachRes.data) {
+        setAttachments(
+          attachRes.data.map((a) => ({
+            id: a.id,
+            kind: a.kind,
+            ownerId: a.owner_id,
+            path: a.path,
+            createdBy: a.created_by,
           }))
         );
       }
@@ -227,6 +244,7 @@ export function SupabaseStateProvider({ children }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "notes" }, scheduleReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "events" }, scheduleReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "event_attendees" }, scheduleReload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "attachments" }, scheduleReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "activity_log" }, scheduleReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "memberships" }, () => {
         if (idsRef.current.userId) {
@@ -268,7 +286,7 @@ export function SupabaseStateProvider({ children }) {
 
   // ---------- Auth ----------
 
-  async function signUp({ name, email, password }) {
+  async function signUp({ name, email, password, householdName, inviteCode }) {
     const cleanName = (name || "").trim();
     const normalized = (email || "").trim().toLowerCase();
     if (!cleanName) return { ok: false, error: "Please enter your name." };
@@ -280,6 +298,57 @@ export function SupabaseStateProvider({ children }) {
       return { ok: false, error: "Check your email to confirm your account, then log in." };
     }
     await ensureProfile(data.user.id, cleanName);
+    // Fold household setup into signup so new users land straight in the app.
+    // On failure, sign back out so the error shows on the signup form.
+    if ((inviteCode || "").trim()) {
+      const joined = await joinAs(data.user.id, inviteCode);
+      if (!joined.ok) {
+        await supabase.auth.signOut();
+        return { ok: false, error: joined.error };
+      }
+      return { ok: true };
+    }
+    const created = await createAs(data.user.id, householdName);
+    if (!created.ok) {
+      await supabase.auth.signOut();
+      return { ok: false, error: created.error };
+    }
+    return { ok: true };
+  }
+
+  async function createAs(userId, householdName) {
+    const clean = (householdName || "").trim().slice(0, 40) || "My Household";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data, error } = await supabase
+        .from("households")
+        .insert({ name: clean, invite_code: makeInviteCode() })
+        .select("id,name,invite_code,currency,log_reminders")
+        .single();
+      if (!error && data) {
+        await supabase.from("memberships").insert({ household_id: data.id, user_id: userId, role: "admin" });
+        setHousehold(data);
+        await logRow(userId, "account", `created the “${clean}” household`);
+        await loadData();
+        return { ok: true };
+      }
+      if (error && error.code !== "23505") return { ok: false, error: errMsg(error, "Could not create the household.") };
+    }
+    return { ok: false, error: "Could not generate a household code — try again." };
+  }
+
+  async function joinAs(userId, code) {
+    const clean = (code || "").trim().toUpperCase();
+    if (!clean) return { ok: false, error: "Please enter an invite code." };
+    const { data: found, error } = await supabase.from("households").select("id,name").eq("invite_code", clean).maybeSingle();
+    if (error || !found) return { ok: false, error: "No household found for that code." };
+    const { error: joinError } = await supabase.from("memberships").insert({ household_id: found.id, user_id: userId, role: "member" });
+    if (joinError && joinError.code !== "23505") return { ok: false, error: errMsg(joinError, "Could not join the household.") };
+    const { data: profile } = await supabase.from("profiles").select("name").eq("id", userId).maybeSingle();
+    const h = await loadHousehold(userId);
+    if (h) {
+      await loadData();
+      await logRow(userId, "account", `${profile?.name ?? "Someone"} joined the household`);
+    }
     return { ok: true };
   }
 
@@ -300,42 +369,14 @@ export function SupabaseStateProvider({ children }) {
 
   async function createHousehold(householdName) {
     const user = (await supabase.auth.getUser()).data.user;
-    const clean = (householdName || "").trim().slice(0, 40) || "My Household";
     if (!user) return { ok: false, error: "You need to be logged in." };
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const { data, error } = await supabase
-        .from("households")
-        .insert({ name: clean, invite_code: makeInviteCode() })
-        .select("id,name,invite_code,currency,log_reminders")
-        .single();
-      if (!error && data) {
-        await supabase.from("memberships").insert({ household_id: data.id, user_id: user.id, role: "admin" });
-        setHousehold(data);
-        await logRow(user.id, "account", `created the “${clean}” household`);
-        await loadData();
-        return { ok: true };
-      }
-      if (error && error.code !== "23505") return { ok: false, error: errMsg(error, "Could not create the household.") };
-    }
-    return { ok: false, error: "Could not generate a household code — try again." };
+    return createAs(user.id, householdName);
   }
 
   async function joinHousehold(code) {
     const user = (await supabase.auth.getUser()).data.user;
-    const clean = (code || "").trim().toUpperCase();
     if (!user) return { ok: false, error: "You need to be logged in." };
-    if (!clean) return { ok: false, error: "Please enter an invite code." };
-    const { data: found, error } = await supabase.from("households").select("id,name").eq("invite_code", clean).maybeSingle();
-    if (error || !found) return { ok: false, error: "No household found for that code." };
-    const { error: joinError } = await supabase.from("memberships").insert({ household_id: found.id, user_id: user.id, role: "member" });
-    if (joinError && joinError.code !== "23505") return { ok: false, error: errMsg(joinError, "Could not join the household.") };
-    const { data: profile } = await supabase.from("profiles").select("name").eq("id", user.id).maybeSingle();
-    const h = await loadHousehold(user.id);
-    if (h) {
-      await loadData();
-      await logRow(user.id, "account", `${profile?.name ?? "Someone"} joined the household`);
-    }
-    return { ok: true };
+    return joinAs(user.id, code);
   }
 
   // ---------- Data (same signatures as the local provider) ----------
@@ -353,7 +394,7 @@ export function SupabaseStateProvider({ children }) {
     logOut,
     createHousehold,
     joinHousehold,
-    addBill: async ({ name, category, amount, due, participants }) => {
+    addBill: async ({ name, category, amount, due, dueDate, recurrence, participants }) => {
       try {
         const hid = householdId();
         const clean = [...new Set(participants || [])];
@@ -366,6 +407,8 @@ export function SupabaseStateProvider({ children }) {
             category,
             amount: Math.round(Number(amount) * 100) / 100,
             due: (due || "").trim() || "This month",
+            due_date: /^\d{4}-\d{2}-\d{2}$/.test(dueDate || "") ? dueDate : null,
+            recurrence: ["Weekly", "Monthly"].includes(recurrence) ? recurrence : "None",
             created_by: userId(),
           })
           .select("id,name,amount")
@@ -435,9 +478,10 @@ export function SupabaseStateProvider({ children }) {
           counterparty_name: otherName,
           date: "Today",
           created_by: userId(),
+          status: "pending",
         });
         if (error) return;
-        const msg = direction === "owedToYou" ? `lent $${rounded} to ${otherName} for “${title.trim()}”` : `borrowed $${rounded} from ${otherName} for “${title.trim()}”`;
+        const msg = direction === "owedToYou" ? `logged lending $${rounded} to ${otherName} for “${title.trim()}” (awaiting confirmation)` : `requested $${rounded} from ${otherName} for “${title.trim()}”`;
         await logRow(userId(), "lending", msg);
         await loadData();
       } catch (e) {
@@ -467,8 +511,40 @@ export function SupabaseStateProvider({ children }) {
     deleteLoan: async (id) => {
       try {
         const loan = loans.find((l) => l.id === id);
+        const stored = await supabase.from("loans").select("title,status,created_by").eq("id", id).maybeSingle();
+        const s = stored.data;
+        // Pending requests can only be cancelled by their creator.
+        if (s && (s.status || "confirmed") === "pending" && s.created_by && s.created_by !== userId()) return;
         await supabase.from("loans").delete().eq("id", id);
         if (loan) await logRow(userId(), "lending", `removed the loan “${loan.title}”`);
+        await loadData();
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    confirmLoan: async (id) => {
+      try {
+        const me = userId();
+        const stored = await supabase.from("loans").select("status,created_by,counterparty_id,title").eq("id", id).maybeSingle();
+        const s = stored.data;
+        if (!s || (s.status || "confirmed") !== "pending") return;
+        if (s.created_by && me !== s.counterparty_id) return;
+        await supabase.from("loans").update({ status: "confirmed" }).eq("id", id);
+        await logRow(me, "lending", `confirmed the “${s.title}” loan`);
+        await loadData();
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    declineLoan: async (id) => {
+      try {
+        const me = userId();
+        const stored = await supabase.from("loans").select("status,created_by,counterparty_id,title").eq("id", id).maybeSingle();
+        const s = stored.data;
+        if (!s || (s.status || "confirmed") !== "pending") return;
+        if (s.created_by && me !== s.counterparty_id) return;
+        await supabase.from("loans").update({ status: "declined" }).eq("id", id);
+        await logRow(me, "lending", `declined the “${s.title}” loan`);
         await loadData();
       } catch (e) {
         console.error(e);
@@ -478,6 +554,7 @@ export function SupabaseStateProvider({ children }) {
       try {
         const loan = loans.find((l) => l.id === loanId);
         if (!loan || !(Number(amount) > 0)) return;
+        if ((loan.status || "confirmed") !== "confirmed") return;
         const repaid = (loan.repayments || []).reduce((s, r) => s + Number(r.amount || 0), 0);
         const remaining = Number(loan.amount) - repaid;
         const clamped = Math.min(Number(amount), Math.max(0, Math.round(remaining * 100) / 100));
@@ -669,13 +746,68 @@ export function SupabaseStateProvider({ children }) {
       try {
         const hid = householdId();
         if (!hid || !isAdminView()) return;
-        // Child rows (splits, repayments, attendees) cascade automatically.
-        for (const table of ["activity_log", "bills", "loans", "notes", "events"]) {
+        // Child rows (splits, repayments, attendees, attachments) cascade automatically.
+        for (const table of ["activity_log", "bills", "loans", "notes", "events", "attachments"]) {
           await supabase.from(table).delete().eq("household_id", hid);
+        }
+        const { data: files } = await supabase.storage.from("receipts").list(hid, { limit: 1000 });
+        if (files && files.length > 0) {
+          await supabase.storage.from("receipts").remove(files.map((f) => `${hid}/${f.name}`));
         }
         await loadData();
       } catch (e) {
         console.error(e);
+      }
+    },
+    addAttachment: async (kind, ownerId, file) => {
+      try {
+        const hid = householdId();
+        if (!hid || !["bill", "loan", "note", "event"].includes(kind) || !ownerId || !file) {
+          return { ok: false, error: "Pick a photo first." };
+        }
+        if (!file.type.startsWith("image/")) return { ok: false, error: "Only image files can be attached." };
+        if (file.size > 8 * 1024 * 1024) return { ok: false, error: "Photos must be under 8 MB." };
+        const safeName = String(file.name || "photo").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60);
+        const path = `${hid}/${kind}/${ownerId}/${Date.now()}-${safeName}`;
+        const { error: upError } = await supabase.storage.from("receipts").upload(path, file, { contentType: file.type });
+        if (upError) return { ok: false, error: upError.message || "Upload failed." };
+        const { error: rowError } = await supabase.from("attachments").insert({
+          household_id: hid,
+          kind,
+          owner_id: String(ownerId),
+          path,
+          created_by: userId(),
+        });
+        if (rowError) {
+          await supabase.storage.from("receipts").remove([path]);
+          return { ok: false, error: rowError.message || "Could not save the attachment." };
+        }
+        await loadData();
+        return { ok: true };
+      } catch (e) {
+        console.error(e);
+        return { ok: false, error: "Upload failed — check your connection." };
+      }
+    },
+    deleteAttachment: async (id) => {
+      try {
+        const row = attachments.find((a) => a.id === id);
+        if (!row) return;
+        await supabase.from("attachments").delete().eq("id", id);
+        await supabase.storage.from("receipts").remove([row.path]);
+        await loadData();
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    getAttachmentUrl: async (path) => {
+      try {
+        if (!path) return null;
+        const { data, error } = await supabase.storage.from("receipts").createSignedUrl(path, 3600);
+        if (error || !data?.signedUrl) return null;
+        return data.signedUrl;
+      } catch {
+        return null;
       }
     },
     openSettings: () => setSettingsOpen(true),
@@ -723,6 +855,7 @@ export function SupabaseStateProvider({ children }) {
     loans,
     notes,
     events,
+    attachments,
     activityLog,
     settings: {
       currency: household?.currency || "USD",

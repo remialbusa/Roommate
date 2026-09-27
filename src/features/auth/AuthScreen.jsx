@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Mail, Lock, User as UserIcon } from "lucide-react";
+import { Mail, Lock, User as UserIcon, Home, Ticket } from "lucide-react";
 import Logo from "../../components/Logo";
 import { COLORS } from "../../theme";
+import { isOnline } from "../../lib/supabase";
 import { useAppState } from "../../state/AppStateContext";
 
 function FieldRow({ icon, ...props }) {
@@ -28,19 +29,34 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const online = isOnline();
+  // Online signup folds household setup in: create new or join by code.
+  const [householdTab, setHouseholdTab] = useState("create");
+  const [householdName, setHouseholdName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
 
   function handleSubmit(e) {
     e.preventDefault();
     if (busy) return;
     setError("");
     setBusy(true);
+    const payload =
+      mode === "login"
+        ? { email, password }
+        : online
+          ? {
+              name,
+              email,
+              password,
+              householdName: householdTab === "create" ? householdName : "",
+              inviteCode: householdTab === "join" ? inviteCode : "",
+            }
+          : { name, email, password };
     // Auth actions are async in online mode, sync locally — await covers both.
-    Promise.resolve(mode === "login" ? actions.logIn({ email, password }) : actions.signUp({ name, email, password })).then(
-      (result) => {
-        setBusy(false);
-        if (!result.ok) setError(result.error);
-      }
-    );
+    Promise.resolve(mode === "login" ? actions.logIn(payload) : actions.signUp(payload)).then((result) => {
+      setBusy(false);
+      if (!result.ok) setError(result.error);
+    });
   }
 
   function switchMode(next) {
@@ -99,6 +115,50 @@ export default function AuthScreen() {
                 maxLength={40}
               />
             )}
+            {mode === "signup" && online && (
+              <div className="mb-4">
+                <div className="flex rounded-xl p-1 mb-3" style={{ backgroundColor: "rgba(18,49,40,0.06)" }}>
+                  <button
+                    type="button"
+                    onClick={() => setHouseholdTab("create")}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-body font-semibold text-[12.5px] transition-colors"
+                    style={{ backgroundColor: householdTab === "create" ? COLORS.ink : "transparent", color: householdTab === "create" ? "#F1ECDC" : COLORS.ink }}
+                  >
+                    <Home size={13} />
+                    New household
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHouseholdTab("join")}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg font-body font-semibold text-[12.5px] transition-colors"
+                    style={{ backgroundColor: householdTab === "join" ? COLORS.ink : "transparent", color: householdTab === "join" ? "#F1ECDC" : COLORS.ink }}
+                  >
+                    <Ticket size={13} />
+                    Join with code
+                  </button>
+                </div>
+                {householdTab === "create" ? (
+                  <FieldRow
+                    icon={<Home size={16} color="rgba(18,49,40,0.45)" />}
+                    type="text"
+                    placeholder="Household name (e.g. Maple St)"
+                    value={householdName}
+                    onChange={(e) => setHouseholdName(e.target.value)}
+                    maxLength={40}
+                  />
+                ) : (
+                  <FieldRow
+                    icon={<Ticket size={16} color="rgba(18,49,40,0.45)" />}
+                    type="text"
+                    placeholder="Invite code (e.g. KQ7X2P)"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+                    maxLength={12}
+                    required
+                  />
+                )}
+              </div>
+            )}
             <FieldRow
               icon={<Mail size={16} color="rgba(18,49,40,0.45)" />}
               type="email"
@@ -137,9 +197,19 @@ export default function AuthScreen() {
         </div>
 
         <p className="font-body text-[12px] mt-5 text-center leading-relaxed" style={{ color: "rgba(18,49,40,0.5)" }}>
-          Prototype build — accounts live only in this browser.
-          <br />
-          Use Sign Up to create your household.
+          {online ? (
+            <>
+              Shared household — your roommates join with
+              <br />
+              the invite code from Settings.
+            </>
+          ) : (
+            <>
+              Prototype build — accounts live only in this browser.
+              <br />
+              Use Sign Up to create your household.
+            </>
+          )}
         </p>
       </div>
     </div>

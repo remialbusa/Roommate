@@ -5,7 +5,7 @@ import ProgressGauge from "../../components/ProgressGauge";
 import Logo from "../../components/Logo";
 import { COLORS } from "../../theme";
 import { useAppState } from "../../state/AppStateContext";
-import { useMoney } from "../../utils/format";
+import { useMoney, dueSortKey } from "../../utils/format";
 import BillRow from "./BillRow";
 import AddBillModal from "./AddBillModal";
 
@@ -99,9 +99,12 @@ export default function BillsHome({ onOpenBill }) {
                 </button>
               ))}
             </div>
-            {visible.map((b, i) => (
-              <BillRow key={b.id} bill={b} index={i} onOpen={() => onOpenBill(b.id)} />
-            ))}
+            {visible
+              .map((b, i) => ({ b, i }))
+              .sort((x, y) => dueSortKey(x.b, x.i) - dueSortKey(y.b, y.i))
+              .map(({ b }, si) => (
+                <BillRow key={b.id} bill={b} index={si} onOpen={() => onOpenBill(b.id)} />
+              ))}
             {visible.length === 0 && (
               <p className="font-body text-[13px] text-center py-6" style={{ color: "rgba(241,236,220,0.4)" }}>
                 No {filter.toLowerCase()} bills yet.

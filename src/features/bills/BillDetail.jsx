@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { SlidersHorizontal, Bell, CheckCircle2, Clock3 } from "lucide-react";
+import { SlidersHorizontal, Bell, CheckCircle2, Clock3, Repeat } from "lucide-react";
 import ScreenHeader from "../../components/ScreenHeader";
 import Avatar from "../../components/Avatar";
 import { COLORS } from "../../theme";
 import { useAppState } from "../../state/AppStateContext";
-import { useMoney } from "../../utils/format";
+import { useMoney, formatBillDue, nextDueDate } from "../../utils/format";
 import { ActionTile, DeleteButton } from "../../components/actions";
 import SplitBillModal from "./SplitBillModal";
+import AttachmentsSection from "../../components/Attachments";
 
 function useToast() {
   const [toast, setToast] = useState("");
@@ -42,6 +43,22 @@ export default function BillDetail({ billId, onBack }) {
   const participantIds = Object.keys(bill.splits || {}).filter((id) => users[id]);
   const share = participantIds.length > 0 ? Number(bill.amount || 0) / participantIds.length : 0;
   const paidCount = participantIds.filter((id) => bill.splits[id]).length;
+  const fullyPaid = participantIds.length > 0 && paidCount === participantIds.length;
+  const nextDate = fullyPaid ? nextDueDate(bill) : null;
+
+  function rollOver() {
+    if (!nextDate) return;
+    actions.addBill({
+      name: bill.name,
+      category: bill.category,
+      amount: Number(bill.amount),
+      dueDate: nextDate,
+      recurrence: bill.recurrence,
+      participants: participantIds,
+      actorId: currentUser.id,
+    });
+    showToast("Next bill created");
+  }
 
   function sendReminder() {
     const pending = participantIds.length - paidCount;
@@ -65,8 +82,17 @@ export default function BillDetail({ billId, onBack }) {
             {bill.name}
           </h2>
           <p className="font-body text-[13px] mt-0.5" style={{ color: "rgba(18,49,40,0.6)" }}>
-            Due {bill.due} · {money(share)} per person · {paidCount}/{participantIds.length} paid
+            Due {formatBillDue(bill)} · {money(share)} per person · {paidCount}/{participantIds.length} paid
           </p>
+          {bill.recurrence && bill.recurrence !== "None" && (
+            <span
+              className="mt-2 inline-flex items-center gap-1 font-body font-semibold text-[11.5px] px-3 py-1 rounded-full"
+              style={{ backgroundColor: "rgba(18,49,40,0.08)", color: COLORS.ink }}
+            >
+              <Repeat size={12} />
+              Repeats {bill.recurrence.toLowerCase()}
+            </span>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-6 relative">
@@ -99,6 +125,19 @@ export default function BillDetail({ billId, onBack }) {
         <div className="mt-3">
           <DeleteButton label="Delete bill" onDelete={() => { actions.deleteBill(bill.id, currentUser.id); onBack(); }} />
         </div>
+        <div className="mt-5">
+          <AttachmentsSection kind="bill" ownerId={bill.id} title="Receipts" />
+        </div>
+        {nextDate && (
+          <button
+            onClick={rollOver}
+            className="mt-3 w-full rounded-2xl py-3.5 flex items-center justify-center gap-2 font-body font-semibold text-[14px] transition-transform active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2"
+            style={{ backgroundColor: COLORS.ink, color: "#F1ECDC" }}
+          >
+            <Repeat size={15} />
+            Create next bill · due {formatBillDue({ dueDate: nextDate })}
+          </button>
+        )}
       </div>
 
       <div className="rounded-t-[28px] p-6 pt-5 flex-1" style={{ backgroundColor: COLORS.ink }}>

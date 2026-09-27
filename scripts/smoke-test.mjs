@@ -252,6 +252,18 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   await tick(150);
   snapshot("after one-tap pay on bill row");
   assertContains("row flips to paid", window.document.getElementById("root").innerHTML, "Paid");
+  // Open the bill: receipts section + real due date render
+  const gasRow = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Test Gas Bill"));
+  if (gasRow) gasRow.click();
+  else errors.push("Test Gas Bill row not found (receipts check)");
+  await tick(100);
+  const detailHtml = window.document.getElementById("root").innerHTML;
+  assertContains("receipts section renders", detailHtml, "Receipts");
+  assertContains("due date renders", detailHtml, "Due ");
+  const goBack = window.document.querySelector('button[aria-label="Go back"]');
+  if (goBack) goBack.click();
+  else errors.push("Go back button not found (receipts check)");
+  await tick(100);
 
   const navActivity = byNav("Activity");
   if (navActivity) navActivity.click();
@@ -352,12 +364,84 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   if (loanSubmit) loanSubmit.click();
   else errors.push("Add Loan submit not found (Alex)");
   await tick(150);
-  snapshot("after Alex logs loan with Sam");
-  assertContains("open loan count", window.document.getElementById("root").innerHTML, "1 open");
+  snapshot("after Alex logs loan with Sam (pending)");
+  assertContains("pending shown on home", window.document.getElementById("root").innerHTML, "awaiting confirmation");
   const balancesTile = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Owed vs owing"));
   if (balancesTile) balancesTile.click();
   else errors.push("Balances tile not found (Alex)");
   await tick(100);
+  html = window.document.getElementById("root").innerHTML;
+  assertContains("pending section visible", html, "Awaiting confirmation");
+  assertContains("creator waits on Sam", html, "Waiting for Sam");
+  // Sam logs in and confirms the request from his side
+  const sBtnsOut = [...window.document.querySelectorAll('button[aria-label="Household members"]')];
+  if (sBtnsOut[0]) sBtnsOut[0].click();
+  else errors.push("Settings button not found (Alex logout)");
+  await tick(100);
+  const loBtn = byText("button", "Log Out");
+  if (loBtn) loBtn.click();
+  else errors.push("Log Out button not found (Alex logout)");
+  await tick(150);
+  const samEmail = byPlaceholder("Email");
+  const samPass = window.document.querySelector('input[type="password"]');
+  if (samEmail && samPass) {
+    setInputValue(samEmail, "sam@roomie.app");
+    setInputValue(samPass, "newpassword1");
+  } else {
+    errors.push("Login fields not found (Sam confirm login)");
+  }
+  const samLogin = window.document.querySelector('button[type="submit"]');
+  if (samLogin) samLogin.click();
+  else errors.push("Login submit not found (Sam confirm login)");
+  await tick(200);
+  const navLendingSam = byNav("Lending");
+  if (navLendingSam) navLendingSam.click();
+  else errors.push("Nav Lending not found (Sam confirm)");
+  await tick(100);
+  // Note: feature screens persist across logout, so Sam may land
+  // straight on Balances — only tap the tile if we're still on Home.
+  const balancesTileSam = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Owed vs owing"));
+  if (balancesTileSam) {
+    balancesTileSam.click();
+    await tick(100);
+  }
+  html = window.document.getElementById("root").innerHTML;
+  assertContains("counterparty sees confirm prompt", html, "Waiting for you to confirm");
+  const confirmBtn = [...window.document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Confirm Test loan");
+  if (confirmBtn) confirmBtn.click();
+  else errors.push("Confirm button not found (Sam)");
+  await tick(150);
+  html = window.document.getElementById("root").innerHTML;
+  assertContains("confirmed loan lands in You Owe", html, "Test loan");
+  // Back to Alex: open the confirmed loan and repay in full
+  const sBtnsOut2 = [...window.document.querySelectorAll('button[aria-label="Household members"]')];
+  if (sBtnsOut2[0]) sBtnsOut2[0].click();
+  await tick(100);
+  const loBtn2 = byText("button", "Log Out");
+  if (loBtn2) loBtn2.click();
+  else errors.push("Log Out button not found (Sam logout)");
+  await tick(150);
+  const alexEmail = byPlaceholder("Email");
+  const alexPass = window.document.querySelector('input[type="password"]');
+  if (alexEmail && alexPass) {
+    setInputValue(alexEmail, "alex@roomie.app");
+    setInputValue(alexPass, "testpass12");
+  } else {
+    errors.push("Login fields not found (Alex re-login)");
+  }
+  const alexLogin = window.document.querySelector('button[type="submit"]');
+  if (alexLogin) alexLogin.click();
+  else errors.push("Login submit not found (Alex re-login)");
+  await tick(200);
+  const navLendingAlex = byNav("Lending");
+  if (navLendingAlex) navLendingAlex.click();
+  else errors.push("Nav Lending not found (Alex repay)");
+  await tick(100);
+  const balancesTileAlex = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Owed vs owing"));
+  if (balancesTileAlex) {
+    balancesTileAlex.click();
+    await tick(100);
+  }
   const loanRow = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Test loan"));
   if (loanRow) loanRow.click();
   else errors.push("Test loan row not found (Alex)");
@@ -380,6 +464,7 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   html = window.document.getElementById("root").innerHTML;
   assertContains("activity shows Alex bill", html, "Dinner");
   assertContains("activity shows Alex loan", html, "Test loan");
+  assertContains("activity shows confirmation", html, "confirmed");
 }
 
 // --- Settings modal + logout ---

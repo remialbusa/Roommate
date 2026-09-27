@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Bell, Coins, Pencil } from "lucide-react";
+import { Bell, Coins, Pencil, Check, X } from "lucide-react";
 import ScreenHeader from "../../components/ScreenHeader";
 import Avatar from "../../components/Avatar";
 import { COLORS } from "../../theme";
@@ -8,6 +8,7 @@ import { useMoney, loanRemaining } from "../../utils/format";
 import { ActionTile, DeleteButton } from "../../components/actions";
 import PayNowModal from "./PayNowModal";
 import AddLoanModal from "./AddLoanModal";
+import AttachmentsSection from "../../components/Attachments";
 
 export default function LoanDetail({ loanId, onBack }) {
   const { state, actions, currentUser } = useAppState();
@@ -35,6 +36,13 @@ export default function LoanDetail({ loanId, onBack }) {
   const repaid = (loan.repayments || []).reduce((s, r) => s + Number(r.amount || 0), 0);
   const remaining = loanRemaining(loan);
   const settled = remaining <= 0;
+  const status = loan.status || "confirmed";
+  const amCreator = Boolean(loan.createdBy && currentUser && loan.createdBy === currentUser.id);
+  // Viewer-mapped loans show the creator as `roommate` exactly when the
+  // viewer is the counterparty — the only other party who may confirm.
+  const canConfirm = status === "pending" && Boolean(loan.createdBy) && loan.roommate === loan.createdBy;
+  const canDelete = amCreator || !loan.createdBy || status !== "pending";
+  const confirmerName = (users[loan.roommate]?.name ?? "roommate").split(" ")[0];
 
   function flash(msg) {
     setToast(msg);
@@ -81,14 +89,54 @@ export default function LoanDetail({ loanId, onBack }) {
           </span>
         </div>
 
+        {status !== "confirmed" && (
+          <div
+            className="rounded-2xl px-4 py-3 flex items-center gap-2.5"
+            style={{
+              backgroundColor: status === "pending" ? "rgba(240,185,11,0.12)" : "rgba(240,73,42,0.12)",
+              border: `1.5px solid ${status === "pending" ? "rgba(240,185,11,0.45)" : "rgba(240,73,42,0.45)"}`,
+            }}
+            role="status"
+          >
+            <span className="font-body font-semibold text-[13px]" style={{ color: COLORS.ink }}>
+              {status === "pending"
+                ? canConfirm
+                  ? "Waiting for you to confirm"
+                  : `Waiting for ${confirmerName} to confirm`
+                : `Declined${amCreator ? " — remove it or log a new one" : ""}`}
+            </span>
+          </div>
+        )}
+
+        {status === "pending" && canConfirm && (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => actions.declineLoan(loan.id, currentUser.id)}
+              className="rounded-2xl py-4 flex items-center justify-center gap-2 font-body font-semibold text-[14px] transition-transform active:scale-[0.97]"
+              style={{ backgroundColor: "transparent", border: "1.5px solid rgba(18,49,40,0.25)", color: COLORS.ink }}
+            >
+              <X size={16} />
+              Decline
+            </button>
+            <button
+              onClick={() => actions.confirmLoan(loan.id, currentUser.id)}
+              className="rounded-2xl py-4 flex items-center justify-center gap-2 font-body font-semibold text-[14px] transition-transform active:scale-[0.97]"
+              style={{ backgroundColor: COLORS.lime, color: COLORS.ink }}
+            >
+              <Check size={16} />
+              Confirm
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 mt-6 relative">
           <ActionTile
             icon={<Coins size={20} color={COLORS.ink} />}
             label={loan.direction === "owedToYou" ? "Log Repayment" : "Log Payment"}
-            hint={settled ? "Fully settled" : `${money(remaining)} left`}
+            hint={settled ? "Fully settled" : status !== "confirmed" ? "Needs confirmation" : `${money(remaining)} left`}
             variant="gold"
             onClick={() => setShowPay(true)}
-            disabled={settled}
+            disabled={settled || status !== "confirmed"}
           />
           <ActionTile
             icon={<Bell size={20} color={COLORS.ink} />}
@@ -108,9 +156,19 @@ export default function LoanDetail({ loanId, onBack }) {
           )}
         </div>
 
-        <div className="mt-3">
-          <DeleteButton label="Delete loan" onDelete={() => { actions.deleteLoan(loan.id, currentUser.id); onBack(); }} />
+        {canDelete && (
+          <div className="mt-3">
+            <DeleteButton label="Delete loan" onDelete={() => { actions.deleteLoan(loan.id, currentUser.id); onBack(); }} />
+          </div>
+        )}
+        <div className="mt-5">
+          <AttachmentsSection kind="loan" ownerId={loan.id} title="Receipts" />
         </div>
+        {!canDelete && (
+          <p className="font-body text-[12.5px] text-center mt-3" style={{ color: "rgba(18,49,40,0.5)" }}>
+            Only {confirmerName} can confirm or cancel this request.
+          </p>
+        )}
       </div>
 
       <div className="rounded-t-[28px] p-6 pt-5 flex-1" style={{ backgroundColor: COLORS.ink }}>

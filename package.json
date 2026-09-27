@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "smoke": "vite build && node scripts/smoke-test.mjs"
+    "smoke": "vite build && node scripts/smoke-test.mjs",
+    "smoke:local": "node scripts/smoke-local.mjs",
+    "online-check": "node scripts/online-check.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

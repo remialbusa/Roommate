@@ -6,30 +6,29 @@ import LoanDetail from "./LoanDetail";
 export default function LendingFeature() {
   const [screen, setScreen] = useState("home");
   const [activeLoan, setActiveLoan] = useState(null);
+  const [balanceFilter, setBalanceFilter] = useState("All");
 
   if (screen === "balances") {
     return (
-      <div key="balances" className="anim-screen">
-        <Balances
-          onBack={() => setScreen("home")}
-          onOpenLoan={(id) => {
-            setActiveLoan(id);
-            setScreen("loan");
-          }}
-        />
-      </div>
+      <Balances
+        onBack={() => setScreen("home")}
+        initialMember={balanceFilter}
+        onOpenLoan={(id) => {
+          setActiveLoan(id);
+          setScreen("loan");
+        }}
+      />
     );
   }
   if (screen === "loan") {
-    return (
-      <div key="loan" className="anim-screen">
-        <LoanDetail loanId={activeLoan} onBack={() => setScreen("balances")} />
-      </div>
-    );
+    return <LoanDetail loanId={activeLoan} onBack={() => setScreen("balances")} />;
   }
   return (
-    <div key="home" className="anim-screen">
-      <LendingHome onOpenBalances={() => setScreen("balances")} />
-    </div>
+    <LendingHome
+      onOpenBalances={(memberId) => {
+        setBalanceFilter(memberId || "All");
+        setScreen("balances");
+      }}
+    />
   );
 }

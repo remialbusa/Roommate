@@ -1,6 +1,6 @@
 import { Check, ChevronRight } from "lucide-react";
 import { COLORS } from "../../theme";
-import { billShare, useMoney } from "../../utils/format";
+import { billShare, useMoney, formatBillDue } from "../../utils/format";
 import { useAppState } from "../../state/AppStateContext";
 
 export default function BillRow({ bill, onOpen, index = 0 }) {
@@ -33,7 +33,8 @@ export default function BillRow({ bill, onOpen, index = 0 }) {
             {bill.name}
           </div>
           <div className="font-body text-[12px]" style={{ color: "rgba(241,236,220,0.5)" }}>
-            Due {bill.due} · {paidCount}/{ids.length} paid
+            Due {formatBillDue(bill)}
+            {bill.recurrence && bill.recurrence !== "None" ? ` · Repeats ${bill.recurrence.toLowerCase()}` : ""} · {paidCount}/{ids.length} paid
           </div>
         </div>
         <div className="font-display font-bold text-[16px] shrink-0" style={{ color: done ? COLORS.lime : "#F1ECDC" }}>

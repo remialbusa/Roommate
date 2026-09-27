@@ -66,6 +66,12 @@ opens Settings, logs out — asserting on the actual rendered output
 at each step (e.g. the bill total shows $42.00, the new note's title
 actually appears in the list). Run it with `npm run smoke`.
 
+The suite drives LOCAL mode: if `.env.local` holds Supabase credentials,
+a plain `npm run smoke` would bake online mode into the build, which
+headless jsdom cannot drive (no `fetch`). Use `npm run smoke:local`
+instead — it temporarily sets the env file aside and restores it
+afterwards. `npm run online-check` probes the live Supabase project.
+
 This doesn't catch CSS/visual issues (jsdom doesn't paint layout), but
 it does catch React crashes, broken event handlers, and wrong data —
 the most common causes of a screen silently failing.
