@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import Modal from "../../components/Modal";
 import { TextField, SelectField, SubmitRow } from "../../components/FormControls";
 import { useAppState } from "../../state/AppStateContext";
-import { useMoney } from "../../utils/format";
+import { useMoney, todayYMD } from "../../utils/format";
 
 export default function AddLoanModal({ open, onClose, loan }) {
   const { state, actions, currentUser } = useAppState();
@@ -14,6 +14,7 @@ export default function AddLoanModal({ open, onClose, loan }) {
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [direction, setDirection] = useState("owedToYou");
+  const [date, setDate] = useState(todayYMD());
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -22,6 +23,7 @@ export default function AddLoanModal({ open, onClose, loan }) {
       setTitle(loan?.title ?? "");
       setAmount(loan ? String(loan.amount) : "");
       setDirection(loan?.direction ?? "owedToYou");
+      setDate(loan?.loanDate || todayYMD());
       setError("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -36,9 +38,11 @@ export default function AddLoanModal({ open, onClose, loan }) {
     if (isEdit) {
       const repaid = (loan.repayments || []).reduce((s, r) => s + Number(r.amount || 0), 0);
       if (Number(amount) < repaid) return setError(`Amount can't be below what's already repaid (${symbol}${repaid}).`);
-      actions.updateLoan({ id: loan.id, roommate, title: title.trim(), amount: Number(amount), direction, actorId: currentUser.id });
+      if (!date) return setError("Please pick a date.");
+      actions.updateLoan({ id: loan.id, roommate, title: title.trim(), amount: Number(amount), direction, date, actorId: currentUser.id });
     } else {
-      actions.addLoan({ roommate, title: title.trim(), amount: Number(amount), direction, actorId: currentUser.id });
+      if (!date) return setError("Please pick a date.");
+      actions.addLoan({ roommate, title: title.trim(), amount: Number(amount), direction, date, actorId: currentUser.id });
     }
     onClose();
   }
@@ -62,6 +66,7 @@ export default function AddLoanModal({ open, onClose, loan }) {
         </SelectField>
         <TextField label="What's it for?" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Groceries run" required maxLength={60} />
         <TextField label={`Amount (${symbol})`} type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" required />
+        <TextField label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         {error && (
           <p className="font-body text-[13px] mb-3" style={{ color: "#F0492A" }} role="alert">
             {error}

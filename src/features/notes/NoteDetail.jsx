@@ -5,6 +5,7 @@ import IconButton from "../../components/IconButton";
 import Avatar from "../../components/Avatar";
 import { COLORS } from "../../theme";
 import { useAppState } from "../../state/AppStateContext";
+import { formatDateLabel } from "../../utils/format";
 import { DeleteButton } from "../../components/actions";
 import AddNoteModal from "./AddNoteModal";
 import AttachmentsSection from "../../components/Attachments";
@@ -62,7 +63,7 @@ export default function NoteDetail({ noteId, onBack }) {
         <div className="flex items-center gap-1.5 min-w-0">
           <Avatar bg={author?.bg} name={author?.name} size={22} />
           <span className="font-body text-[13px] truncate" style={{ color: "rgba(241,236,220,0.6)" }}>
-            {author?.name ?? "Unknown"} · {note.time}
+            {author?.name ?? "Unknown"} · {note.time}{note.noteDate ? ` · ${formatDateLabel(note.noteDate)}` : ""}
           </span>
         </div>
         <button

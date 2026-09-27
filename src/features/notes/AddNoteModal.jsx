@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Modal from "../../components/Modal";
 import { TextField, TextAreaField, SelectField, SubmitRow } from "../../components/FormControls";
 import { useAppState } from "../../state/AppStateContext";
+import { todayYMD } from "../../utils/format";
 
 const COLOR_OPTIONS = [
   { value: "gold", label: "Gold" },
@@ -34,7 +35,7 @@ export default function AddNoteModal({ open, onClose, note }) {
     if (isEdit) {
       actions.updateNote({ id: note.id, title: title.trim(), body: body.trim(), color, actorId: currentUser.id });
     } else {
-      actions.addNote({ title: title.trim(), body: body.trim(), color, actorId: currentUser.id });
+      actions.addNote({ title: title.trim(), body: body.trim(), color, noteDate: todayYMD(), actorId: currentUser.id });
     }
     onClose();
   }

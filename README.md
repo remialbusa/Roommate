@@ -86,20 +86,29 @@ Every visible control performs a real action against shared state
   (gold Admin badge); only the admin can remove members or manage
   household data. New accounts join the household roster used
   everywhere else in the app.
-- **Bills** — one screen: semicircle gauge overview, Add Bill
-  (validated split), 1-tap Pay on your own share straight from the
-  bill list, All/Rent/Utilities filter. Tap a row for split editing,
-  reminders, and delete. Empty states guide first-time setup.
-- **Money Lending** — Log/edit/delete loans, Log Repayment/Payment
-  (clamped so you can't overpay, updates remaining balance and the
-  "Settled" gauge live), Send Reminder. "You're Owed"/"You Owe" open
-  real sorted loan lists with settled states.
-- **Notes** — Add, edit, delete (two-tap confirm), search across
-  titles + body, multiple pinned notes, color tags editable.
-- **Calendar** — Add/edit/remove events (validated day, time, color,
-  attendees); month grid uses real date math, supports multiple
-  events per day with dots, tap empty day to quick-add, sorted
-  upcoming list.
+- **Bills** — one screen: semicircle gauge overview, Add Bill with
+  real due dates and Never/Weekly/Monthly repeats (sorted by date),
+  1-tap Pay on your own share straight from the bill list,
+  All/Rent/Utilities filter. Tap a row for split editing, reminders,
+  receipts, and delete. Fully-paid recurring bills offer one-tap
+  "Create next bill" rollover. Empty states guide first-time setup.
+- **Money Lending** — Log/edit/delete loans, per-member net rows on
+  Home, member filter on Balances. New loans start Pending and need
+  the counterparty's Confirm (Decline/Cancel supported); only
+  Confirmed loans count, and only the creator logs repayments.
+  Log Repayment/Payment is clamped so you can't overpay. "You're
+  Owed"/"You Owe" open real sorted loan lists with settled states.
+- **Receipts & photos** — attachable on bills, loans, notes, and
+  events (online mode; stored privately per household).
+- **Notes** — Add (auto-dated), edit, delete, search across titles
+  + body, multiple pinned notes, color tags editable, photo
+  attachments.
+- **Calendar** — unified agenda: bill due dates, loan dates, note
+  dates, and events share one month grid (type-colored dots) and one
+  chronological Upcoming list; tapping a day opens a sheet, tapping
+  any row deep-links straight to that bill, loan, note, or event.
+  Add/edit/remove events with real date math; tap an empty day to
+  quick-add, tap the month title to jump back to today.
 - **Activity Log** — Every action above automatically appends a real
   entry here (capped at 200), attributed to the account that did it,
   filterable by category (including "Account" for sign-ups),

@@ -20,6 +20,8 @@ export function SupabaseStateProvider({ children }) {
   const supabase = getSupabase();
   const [sessionUser, setSessionUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
+  const [booted, setBooted] = useState(false);
+  const [bootError, setBootError] = useState(null);
   const [household, setHousehold] = useState(null);
   const [members, setMembers] = useState([]); // [{user_id, role, profile:{name,bg}}]
   const [bills, setBills] = useState([]);
@@ -100,6 +102,7 @@ export function SupabaseStateProvider({ children }) {
               title: l.title,
               amount: Number(l.amount),
               date: l.date,
+              loanDate: l.loan_date || null,
               direction,
               status: l.status || "confirmed",
               createdBy: l.created_by,
@@ -116,6 +119,7 @@ export function SupabaseStateProvider({ children }) {
             body: n.body,
             author: n.author,
             time: n.time,
+            noteDate: n.note_date || null,
             color: n.color,
             pinned: n.pinned,
           }))
@@ -215,6 +219,21 @@ export function SupabaseStateProvider({ children }) {
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
+  // Boot sequence: session → household → data, all behind one gate so
+  // a refresh never strobes through login/setup screens mid-load.
+  async function boot(uid) {
+    setBootError(null);
+    try {
+      const h = await loadHousehold(uid);
+      if (h) await loadData();
+    } catch (e) {
+      console.error(e);
+      setBootError("Couldn't reach the server. Check your connection and retry.");
+    } finally {
+      setBooted(true);
+    }
+  }
+
   // Load household whenever the session user changes; clear on logout.
   useEffect(() => {
     if (!sessionUser) {
@@ -224,10 +243,15 @@ export function SupabaseStateProvider({ children }) {
       setLoans([]);
       setNotes([]);
       setEvents([]);
+      setAttachments([]);
       setActivityLog([]);
+      setBootError(null);
+      setBooted(authReady);
       return;
     }
-    loadHousehold(sessionUser.id).then(() => loadData());
+    setBooted(false);
+    setBootError(null);
+    boot(sessionUser.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUser?.id]);
 
@@ -462,13 +486,14 @@ export function SupabaseStateProvider({ children }) {
         console.error(e);
       }
     },
-    addLoan: async ({ roommate, title, amount, direction }) => {
+    addLoan: async ({ roommate, title, amount, direction, date }) => {
       try {
         const hid = householdId();
         if (!hid || !title.trim() || !(Number(amount) > 0)) return;
         const rounded = Math.round(Number(amount) * 100) / 100;
         const me = stateView().users[roommate];
         const otherName = me?.name ?? "roommate";
+        const loanDate = /^\d{4}-\d{2}-\d{2}$/.test(date || "") ? date : null;
         const { error } = await supabase.from("loans").insert({
           household_id: hid,
           title: title.trim(),
@@ -477,6 +502,7 @@ export function SupabaseStateProvider({ children }) {
           counterparty_id: roommate || null,
           counterparty_name: otherName,
           date: "Today",
+          loan_date: loanDate,
           created_by: userId(),
           status: "pending",
         });
@@ -488,7 +514,7 @@ export function SupabaseStateProvider({ children }) {
         console.error(e);
       }
     },
-    updateLoan: async ({ id, title, amount, direction, roommate }) => {
+    updateLoan: async ({ id, title, amount, direction, roommate, date }) => {
       try {
         if (!title.trim() || !(Number(amount) > 0)) return;
         const me = stateView().users[roommate];
@@ -500,6 +526,7 @@ export function SupabaseStateProvider({ children }) {
             direction,
             counterparty_id: roommate || null,
             counterparty_name: me?.name ?? "roommate",
+            loan_date: /^\d{4}-\d{2}-\d{2}$/.test(date || "") ? date : null,
           })
           .eq("id", id);
         await logRow(userId(), "lending", `updated the loan “${title.trim()}”`);
@@ -555,13 +582,15 @@ export function SupabaseStateProvider({ children }) {
         const loan = loans.find((l) => l.id === loanId);
         if (!loan || !(Number(amount) > 0)) return;
         if ((loan.status || "confirmed") !== "confirmed") return;
+        // Counterparty identity in stored terms (unflip the viewer mapping).
+        const stored = await supabase.from("loans").select("direction,counterparty_id,created_by,title").eq("id", loanId).maybeSingle();
+        // Only the creator settles the log (legacy loans stay shared).
+        if (stored.data?.created_by && stored.data.created_by !== userId()) return;
         const repaid = (loan.repayments || []).reduce((s, r) => s + Number(r.amount || 0), 0);
         const remaining = Number(loan.amount) - repaid;
         const clamped = Math.min(Number(amount), Math.max(0, Math.round(remaining * 100) / 100));
         if (!(clamped > 0)) return;
         const rounded = Math.round(clamped * 100) / 100;
-        // Counterparty identity in stored terms (unflip the viewer mapping).
-        const stored = await supabase.from("loans").select("direction,counterparty_id,title").eq("id", loanId).maybeSingle();
         await supabase.from("repayments").insert({ loan_id: loanId, amount: rounded, date: "Today", created_by: userId() });
         if (stored.data) {
           const title = stored.data.title;
@@ -581,7 +610,7 @@ export function SupabaseStateProvider({ children }) {
         console.error(e);
       }
     },
-    addNote: async ({ title, body, color }) => {
+    addNote: async ({ title, body, color, noteDate }) => {
       try {
         const hid = householdId();
         if (!hid || !title.trim() || !body.trim()) return;
@@ -591,6 +620,7 @@ export function SupabaseStateProvider({ children }) {
           body: body.trim().slice(0, 2000),
           author: userId(),
           time: "Just now",
+          note_date: /^\d{4}-\d{2}-\d{2}$/.test(noteDate || "") ? noteDate : null,
           color: NOTE_COLORS.includes(color) ? color : "gold",
           pinned: false,
         });
@@ -812,6 +842,13 @@ export function SupabaseStateProvider({ children }) {
     },
     openSettings: () => setSettingsOpen(true),
     closeSettings: () => setSettingsOpen(false),
+    retryBoot: () => {
+      const uid = idsRef.current.userId;
+      if (!uid) return;
+      setBooted(false);
+      setBootError(null);
+      boot(uid);
+    },
   };
 
   // Local view helpers used by a few actions above.
@@ -867,7 +904,16 @@ export function SupabaseStateProvider({ children }) {
   };
 
   return (
-    <AppStateContext.Provider value={{ state, actions, currentUser, needsHousehold: Boolean(sessionUser && authReady && !household) }}>
+    <AppStateContext.Provider
+      value={{
+        state,
+        actions,
+        currentUser,
+        needsHousehold: Boolean(booted && sessionUser && !household && !bootError),
+        ready: booted,
+        bootError,
+      }}
+    >
       {children}
     </AppStateContext.Provider>
   );

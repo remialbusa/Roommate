@@ -4,7 +4,7 @@ import ScreenHeader from "../../components/ScreenHeader";
 import Avatar from "../../components/Avatar";
 import { COLORS } from "../../theme";
 import { useAppState } from "../../state/AppStateContext";
-import { useMoney, loanRemaining } from "../../utils/format";
+import { useMoney, loanRemaining, formatDateLabel } from "../../utils/format";
 import { ActionTile, DeleteButton } from "../../components/actions";
 import PayNowModal from "./PayNowModal";
 import AddLoanModal from "./AddLoanModal";
@@ -43,6 +43,9 @@ export default function LoanDetail({ loanId, onBack }) {
   const canConfirm = status === "pending" && Boolean(loan.createdBy) && loan.roommate === loan.createdBy;
   const canDelete = amCreator || !loan.createdBy || status !== "pending";
   const confirmerName = (users[loan.roommate]?.name ?? "roommate").split(" ")[0];
+  // Only the creator settles the log (legacy loans stay shared).
+  const canSettle = !loan.createdBy || (currentUser && loan.createdBy === currentUser.id);
+  const creatorName = (users[loan.createdBy]?.name ?? "the creator").split(" ")[0];
 
   function flash(msg) {
     setToast(msg);
@@ -79,7 +82,7 @@ export default function LoanDetail({ loanId, onBack }) {
             {person?.name ?? "Unknown roommate"}
           </h2>
           <p className="font-body text-[13px] mt-0.5" style={{ color: "rgba(18,49,40,0.6)" }}>
-            {money(loan.amount)} · {loan.date} · {settled ? "Fully settled" : `${money(remaining)} remaining`}
+            {money(loan.amount)} · {formatDateLabel(loan.loanDate) || loan.date} · {settled ? "Fully settled" : `${money(remaining)} remaining`}
           </p>
           <span
             className="mt-2 font-body font-semibold text-[11.5px] px-3 py-1 rounded-full"
@@ -133,10 +136,10 @@ export default function LoanDetail({ loanId, onBack }) {
           <ActionTile
             icon={<Coins size={20} color={COLORS.ink} />}
             label={loan.direction === "owedToYou" ? "Log Repayment" : "Log Payment"}
-            hint={settled ? "Fully settled" : status !== "confirmed" ? "Needs confirmation" : `${money(remaining)} left`}
+            hint={settled ? "Fully settled" : status !== "confirmed" ? "Needs confirmation" : !canSettle ? `Only ${creatorName} settles` : `${money(remaining)} left`}
             variant="gold"
             onClick={() => setShowPay(true)}
-            disabled={settled || status !== "confirmed"}
+            disabled={settled || status !== "confirmed" || !canSettle}
           />
           <ActionTile
             icon={<Bell size={20} color={COLORS.ink} />}

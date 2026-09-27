@@ -67,6 +67,24 @@ function parseYMD(s) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+export { parseYMD };
+
+export function ymdParts(s) {
+  const d = parseYMD(s);
+  if (!d) return null;
+  return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
+}
+
+/** "Oct 1" (adds year when outside the current year). Empty string when invalid. */
+export function formatDateLabel(s) {
+  const d = parseYMD(s);
+  if (!d) return "";
+  const now = new Date();
+  const opts = { month: "short", day: "numeric" };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+  return d.toLocaleDateString("en-US", opts);
+}
+
 export function toYMD(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");

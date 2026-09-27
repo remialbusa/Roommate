@@ -5,11 +5,13 @@ import { useAppState } from "../../state/AppStateContext";
 import { useMoney, loanRemaining } from "../../utils/format";
 
 export default function PayNowModal({ open, onClose, loan }) {
-  const { actions, currentUser } = useAppState();
+  const { state, actions, currentUser } = useAppState();
   const { money, symbol } = useMoney();
   const remaining = loan ? loanRemaining(loan) : 0;
   const [amount, setAmount] = useState("");
   const [error, setError] = useState("");
+  const canSettle = !loan?.createdBy || (currentUser && loan.createdBy === currentUser.id);
+  const creatorName = (state.users[loan?.createdBy]?.name ?? "the creator").split(" ")[0];
 
   useEffect(() => {
     if (loan && open) {
@@ -24,6 +26,7 @@ export default function PayNowModal({ open, onClose, loan }) {
     setError("");
     const n = Number(amount);
     if (!loan || !(n > 0)) return setError("Enter an amount greater than $0.");
+    if (!canSettle) return setError(`Only ${creatorName} can settle this log.`);
     if (n > remaining) return setError(`That exceeds the ${money(remaining)} remaining.`);
     actions.addRepayment(loan.id, n, currentUser.id);
     onClose();

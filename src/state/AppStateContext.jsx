@@ -174,10 +174,11 @@ function reducer(state, action) {
       return { ...state, bills, activityLog: capLog([logEntry(actorId, "bills", `updated who's splitting ${bill.name}`), ...state.activityLog]) };
     }
     case "ADD_LOAN": {
-      const { roommate, title, amount, direction, actorId } = action.payload;
+      const { roommate, title, amount, direction, date, actorId } = action.payload;
       if (!state.users[roommate] || !title.trim() || !(Number(amount) > 0)) return state;
       const rounded = Math.round(Number(amount) * 100) / 100;
-      const loan = { id: makeId("loan"), roommate, title: title.trim(), amount: rounded, direction, date: "Today", repayments: [], status: "pending", createdBy: actorId };
+      const loanDate = /^\d{4}-\d{2}-\d{2}$/.test(date || "") ? date : null;
+      const loan = { id: makeId("loan"), roommate, title: title.trim(), amount: rounded, direction, date: "Today", loanDate, repayments: [], status: "pending", createdBy: actorId };
       const otherName = state.users[roommate]?.name ?? "roommate";
       const msg = direction === "owedToYou" ? `logged lending $${rounded} to ${otherName} for “${loan.title}” (awaiting confirmation)` : `requested $${rounded} from ${otherName} for “${loan.title}”`;
       return { ...state, loans: [...state.loans, loan], activityLog: capLog([logEntry(actorId, "lending", msg), ...state.activityLog]) };
@@ -228,6 +229,8 @@ function reducer(state, action) {
       const loan = state.loans.find((l) => l.id === loanId);
       if (!loan || !(Number(amount) > 0)) return state;
       if ((loan.status || "confirmed") !== "confirmed") return state;
+      // Only the creator settles the log (legacy loans stay shared).
+      if (loan.createdBy && actorId !== loan.createdBy) return state;
       const repaid = loan.repayments.reduce((s, r) => s + Number(r.amount || 0), 0);
       const remaining = Number(loan.amount) - repaid;
       const clamped = Math.min(Number(amount), Math.max(0, Math.round(remaining * 100) / 100));
@@ -241,7 +244,7 @@ function reducer(state, action) {
       return { ...state, loans, activityLog: capLog([logEntry(actor, "lending", msg), ...state.activityLog]) };
     }
     case "ADD_NOTE": {
-      const { title, body, color, actorId } = action.payload;
+      const { title, body, color, noteDate, actorId } = action.payload;
       if (!title.trim() || !body.trim()) return state;
       const note = {
         id: makeId("note"),
@@ -249,6 +252,7 @@ function reducer(state, action) {
         body: body.trim().slice(0, 2000),
         author: actorId,
         time: "Just now",
+        noteDate: /^\d{4}-\d{2}-\d{2}$/.test(noteDate || "") ? noteDate : null,
         color: NOTE_COLORS.includes(color) ? color : "gold",
         pinned: false,
       };
@@ -413,11 +417,12 @@ export function AppStateProvider({ children }) {
     getAttachmentUrl: async () => null,
     openSettings: () => dispatch({ type: "OPEN_SETTINGS" }),
     closeSettings: () => dispatch({ type: "CLOSE_SETTINGS" }),
+    retryBoot: () => {},
   };
 
   const currentUser = state.currentUserId ? state.users[state.currentUserId] : null;
 
-  return <AppStateContext.Provider value={{ state, actions, currentUser, needsHousehold: false }}>{children}</AppStateContext.Provider>;
+  return <AppStateContext.Provider value={{ state, actions, currentUser, needsHousehold: false, ready: true, bootError: null }}>{children}</AppStateContext.Provider>;
 }
 
 export { useAppState };

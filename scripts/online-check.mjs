@@ -70,6 +70,37 @@ try {
   const { error: toggleError } = await supabase.from("bill_splits").update({ paid: true }).eq("bill_id", bill.id).eq("user_id", userId);
   check("bill_splits update (toggle paid)", !toggleError, toggleError?.message);
 
+  // 4b. Migration-002 surface: dated/recurring bill, pending loan status.
+  const { data: bill2, error: bill2Error } = await supabase
+    .from("bills")
+    .insert({ household_id: hh.id, name: "Probe Dated", category: "Rent", amount: 100, due: "Today", due_date: "2026-10-01", recurrence: "Monthly", created_by: userId })
+    .select("id,due_date,recurrence")
+    .single();
+  check("bills due_date+recurrence (migration-002)", !bill2Error && bill2?.due_date === "2026-10-01" && bill2?.recurrence === "Monthly", bill2Error?.message);
+  const { data: loan2, error: loan2Error } = await supabase
+    .from("loans")
+    .insert({ household_id: hh.id, title: "Probe Pending", amount: 10, direction: "owedToYou", counterparty_name: "Probe", date: "Today", created_by: userId, status: "pending" })
+    .select("id,status")
+    .single();
+  check("loans status (migration-002)", !loan2Error && loan2?.status === "pending", loan2Error?.message);
+
+  // 4c. Attachments: storage upload + row + read-back, then remove.
+  const { error: upError } = await supabase.storage.from("receipts").upload(
+    `${hh.id}/bill/${bill2.id}/probe.png`,
+    new File(["probe"], "probe.png", { type: "image/png" })
+  );
+  check("storage upload (receipts bucket)", !upError, upError?.message);
+  const { data: att, error: attachRowError } = await supabase
+    .from("attachments")
+    .insert({ household_id: hh.id, kind: "bill", owner_id: bill2.id, path: `${hh.id}/bill/${bill2.id}/probe.png`, created_by: userId })
+    .select("id")
+    .single();
+  check("attachments row", !attachRowError, attachRowError?.message);
+  const { data: signed, error: signedError } = await supabase.storage.from("receipts").createSignedUrl(`${hh.id}/bill/${bill2.id}/probe.png`, 60);
+  check("storage signed URL", !signedError && Boolean(signed?.signedUrl), signedError?.message);
+  if (att) await supabase.from("attachments").delete().eq("id", att.id);
+  await supabase.storage.from("receipts").remove([`${hh.id}/bill/${bill2.id}/probe.png`]);
+
   // 5. Loan + repayment.
   const { data: loan, error: loanError } = await supabase
     .from("loans")
@@ -102,7 +133,7 @@ try {
 
   // 7. Read-back across the household.
   const { data: billsBack, error: billsBackError } = await supabase.from("bills").select("id").eq("household_id", hh.id);
-  check("household read-back", !billsBackError && billsBack.length === 1, billsBackError?.message);
+  check("household read-back", !billsBackError && billsBack.length === 2, billsBackError?.message);
 
   // 8. Realtime echo (proves the publication + websocket path).
   let pingError = null;

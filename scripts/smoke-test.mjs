@@ -221,6 +221,9 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   await tick(150);
   snapshot("after adding an event");
   assertContains("new event title visible", window.document.getElementById("root").innerHTML, "Test Event");
+  // Agenda surfaces dated bills/loans/notes the moment they're logged
+  const agendaHtml = window.document.getElementById("root").innerHTML;
+  assertContains("agenda shows note", agendaHtml, "Test Note");
 }
 
 // --- Activity feed: filter chips ---
@@ -413,6 +416,16 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   await tick(150);
   html = window.document.getElementById("root").innerHTML;
   assertContains("confirmed loan lands in You Owe", html, "Test loan");
+  // Non-creators can't settle: Sam opens it, repay is locked to Alex
+  const samLoanRow = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Test loan"));
+  if (samLoanRow) samLoanRow.click();
+  else errors.push("Test loan row not found (Sam settle check)");
+  await tick(100);
+  assertContains("settle locked to creator", window.document.getElementById("root").innerHTML, "Only Alex");
+  const goBackBtn = window.document.querySelector('button[aria-label="Go back"]');
+  if (goBackBtn) goBackBtn.click();
+  else errors.push("Go back button not found (Sam settle check)");
+  await tick(100);
   // Back to Alex: open the confirmed loan and repay in full
   const sBtnsOut2 = [...window.document.querySelectorAll('button[aria-label="Household members"]')];
   if (sBtnsOut2[0]) sBtnsOut2[0].click();
@@ -465,6 +478,29 @@ for (const label of ["Bills", "Lending", "Notes", "Calendar", "Activity"]) {
   assertContains("activity shows Alex bill", html, "Dinner");
   assertContains("activity shows Alex loan", html, "Test loan");
   assertContains("activity shows confirmation", html, "confirmed");
+}
+
+// --- Unified calendar: agenda shows dated bills/loans/notes, deep links work ---
+{
+  const navCal = byNav("Calendar");
+  if (navCal) navCal.click();
+  else errors.push("Nav Calendar not found (agenda check)");
+  await tick(150);
+  const agendaHtml = window.document.getElementById("root").innerHTML;
+  assertContains("agenda shows bill", agendaHtml, "Dinner");
+  assertContains("agenda shows loan", agendaHtml, "Test loan");
+  assertContains("agenda shows note", agendaHtml, "Test Note");
+  assertContains("agenda shows event", agendaHtml, "Test Event");
+  // Deep link: agenda row opens the bill detail on the Bills tab
+  const dinnerAgenda = [...window.document.querySelectorAll("button")].find((b) => b.textContent.includes("Dinner"));
+  if (dinnerAgenda) dinnerAgenda.click();
+  else errors.push("Dinner agenda row not found (deep link)");
+  await tick(150);
+  assertContains("deep link opens bill detail", window.document.getElementById("root").innerHTML, "Split Between Roommates");
+  const backToBills = window.document.querySelector('button[aria-label="Go back"]');
+  if (backToBills) backToBills.click();
+  else errors.push("Go back button not found (deep link)");
+  await tick(100);
 }
 
 // --- Settings modal + logout ---
