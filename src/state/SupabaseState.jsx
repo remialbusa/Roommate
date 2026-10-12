@@ -22,6 +22,7 @@ export function SupabaseStateProvider({ children }) {
   const [authReady, setAuthReady] = useState(false);
   const [booted, setBooted] = useState(false);
   const [bootError, setBootError] = useState(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [household, setHousehold] = useState(null);
   const [members, setMembers] = useState([]); // [{user_id, role, profile:{name,bg}}]
   const [bills, setBills] = useState([]);
@@ -220,9 +221,11 @@ export function SupabaseStateProvider({ children }) {
         console.error("getSession failed:", e);
         setAuthReady(true);
       });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       setSessionUser(session?.user ?? null);
       setAuthReady(true);
+      // Arriving from the "reset your password" email link.
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
     });
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
@@ -254,6 +257,7 @@ export function SupabaseStateProvider({ children }) {
       setAttachments([]);
       setActivityLog([]);
       setBootError(null);
+      setPasswordRecovery(false);
       setBooted(authReady);
       return;
     }
@@ -399,6 +403,36 @@ export function SupabaseStateProvider({ children }) {
     await supabase.auth.signOut();
   }
 
+  // ---------- Password reset ----------
+
+  async function forgotPassword(email) {
+    const normalized = (email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return { ok: false, error: "Please enter a valid email address." };
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(normalized, {
+        redirectTo: window.location.origin,
+      });
+      if (error) return { ok: false, error: errMsg(error, "Could not send the reset email.") };
+      return { ok: true };
+    } catch (e) {
+      console.error(e);
+      return { ok: false, error: "Couldn't reach the server. Check your connection and retry." };
+    }
+  }
+
+  async function updatePassword(password) {
+    if ((password || "").length < 6) return { ok: false, error: "Password must be at least 6 characters." };
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) return { ok: false, error: errMsg(error, "Could not update your password.") };
+      setPasswordRecovery(false);
+      return { ok: true };
+    } catch (e) {
+      console.error(e);
+      return { ok: false, error: "Couldn't reach the server. Check your connection and retry." };
+    }
+  }
+
   async function createHousehold(householdName) {
     const user = (await supabase.auth.getUser()).data.user;
     if (!user) return { ok: false, error: "You need to be logged in." };
@@ -423,6 +457,8 @@ export function SupabaseStateProvider({ children }) {
   const actions = {
     signUp,
     logIn,
+    forgotPassword,
+    updatePassword,
     logOut,
     createHousehold,
     joinHousehold,
@@ -920,6 +956,7 @@ export function SupabaseStateProvider({ children }) {
         needsHousehold: Boolean(booted && sessionUser && !household && !bootError),
         ready: booted,
         bootError,
+        passwordRecovery,
       }}
     >
       {children}

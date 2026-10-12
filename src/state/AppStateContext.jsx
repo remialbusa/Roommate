@@ -120,6 +120,12 @@ function reducer(state, action) {
       return { ...state, currentUserId: action.payload.id };
     case "LOG_OUT":
       return { ...state, currentUserId: null };
+    case "RESET_PASSWORD": {
+      const { id, password } = action.payload;
+      const user = state.users[id];
+      if (!user || (password || "").length < 6) return state;
+      return { ...state, users: { ...state.users, [id]: { ...user, password } } };
+    }
     case "ADD_BILL": {
       const { name, category, amount, due, dueDate, recurrence, participants, actorId } = action.payload;
       const cleanParticipants = [...new Set(participants)].filter((id) => state.users[id]);
@@ -386,9 +392,23 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   }
 
+  // No email exists in local mode, so the reset happens right here in the
+  // browser: anyone with access to it can set a new password for any
+  // account it holds (those passwords are already stored in plain text).
+  function resetPassword({ email, password }) {
+    const normalized = (email || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) return { ok: false, error: "Please enter a valid email address." };
+    if ((password || "").length < 6) return { ok: false, error: "Password must be at least 6 characters." };
+    const found = Object.values(state.users).find((u) => u.email.toLowerCase() === normalized);
+    if (!found) return { ok: false, error: "No account with that email in this browser." };
+    dispatch({ type: "RESET_PASSWORD", payload: { id: found.id, password } });
+    return { ok: true };
+  }
+
   const actions = {
     signUp,
     logIn,
+    resetPassword,
     logOut: () => dispatch({ type: "LOG_OUT" }),
     addBill: (payload) => dispatch({ type: "ADD_BILL", payload }),
     deleteBill: (id, actorId) => dispatch({ type: "DELETE_BILL", payload: { id, actorId } }),
@@ -422,7 +442,7 @@ export function AppStateProvider({ children }) {
 
   const currentUser = state.currentUserId ? state.users[state.currentUserId] : null;
 
-  return <AppStateContext.Provider value={{ state, actions, currentUser, needsHousehold: false, ready: true, bootError: null }}>{children}</AppStateContext.Provider>;
+  return <AppStateContext.Provider value={{ state, actions, currentUser, needsHousehold: false, ready: true, bootError: null, passwordRecovery: false }}>{children}</AppStateContext.Provider>;
 }
 
 export { useAppState };

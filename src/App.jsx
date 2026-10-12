@@ -7,6 +7,7 @@ import { SupabaseStateProvider } from "./state/SupabaseState";
 import { isOnline } from "./lib/supabase";
 import AuthScreen from "./features/auth/AuthScreen";
 import HouseholdSetup from "./features/auth/HouseholdSetup";
+import ResetPassword from "./features/auth/ResetPassword";
 import BillsFeature from "./features/bills";
 import LendingFeature from "./features/lending";
 import NotesFeature from "./features/notes";
@@ -14,13 +15,18 @@ import CalendarFeature from "./features/calendar";
 import ActivityFeature from "./features/activity";
 
 function AppContent() {
-  const { currentUser, needsHousehold, ready } = useAppState();
+  const { currentUser, needsHousehold, ready, passwordRecovery } = useAppState();
   // Owned navigation: any screen (e.g. a calendar agenda row) can
   // deep-link to any other tab's detail screen.
   const [nav, setNav] = useState({ tab: "bills", screen: "home", id: null });
 
   if (!ready) {
     return <Splash />;
+  }
+
+  // Came back from a "reset your password" email link.
+  if (passwordRecovery) {
+    return <ResetPassword />;
   }
 
   if (!currentUser) {
