@@ -208,10 +208,18 @@ export function SupabaseStateProvider({ children }) {
   // Auth session tracking.
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => {
-      setSessionUser(data.session?.user ?? null);
-      setAuthReady(true);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setSessionUser(data.session?.user ?? null);
+        setAuthReady(true);
+      })
+      .catch((e) => {
+        // A rejected getSession (offline, blocked request) must still
+        // release the boot gate, or the splash hangs forever.
+        console.error("getSession failed:", e);
+        setAuthReady(true);
+      });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionUser(session?.user ?? null);
       setAuthReady(true);
@@ -253,7 +261,7 @@ export function SupabaseStateProvider({ children }) {
     setBootError(null);
     boot(sessionUser.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionUser?.id]);
+  }, [sessionUser?.id, authReady]);
 
   // Load data once the household is known; subscribe to realtime.
   useEffect(() => {
